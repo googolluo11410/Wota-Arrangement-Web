@@ -2,6 +2,25 @@ import type { Block, Lyric } from "./model";
 
 export type TimeRange = { start: number; end: number };
 
+/** Return the closest target within the screen-distance tolerance. */
+export function snapTime(
+  value: number,
+  targets: number[],
+  tolerance: number,
+): number {
+  let closest = value;
+  let distance = tolerance;
+  for (const target of targets) {
+    if (!Number.isFinite(target)) continue;
+    const difference = Math.abs(value - target);
+    if (difference <= distance) {
+      closest = target;
+      distance = difference;
+    }
+  }
+  return closest;
+}
+
 export function formatTime(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "未对时";
   const seconds = Math.max(0, value);

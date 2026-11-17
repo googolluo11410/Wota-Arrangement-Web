@@ -2,6 +2,7 @@ import {
   draggedRange,
   insertionRange,
   insertionStart,
+  snapTime,
 } from "../src/core/timing";
 
 import { describe, expect, it } from "vitest";
@@ -46,6 +47,11 @@ describe("歌词导入", () => {
 });
 
 describe("时间轴模型", () => {
+  it("仅在阈值内吸附到最近有效时间", () => {
+    expect(snapTime(2.04, [2, 2.03, NaN], 0.1)).toBe(2.03);
+    expect(snapTime(2.3, [2], 0.1)).toBe(2.3);
+    expect(snapTime(2, [], 0.1)).toBe(2);
+  });
   it("使用任意整数拍计算 BPM 时长", () => {
     expect(suggestedDuration("120", "16")).toBe(8);
     expect(suggestedDuration("120", "1.5")).toBe(0.75);

@@ -870,6 +870,54 @@ export function setVisibility(
     if (frame.time >= t) frame.visible = visible;
   rebuildFrames(c);
 }
+/** Snap each coordinate independently to nearby stage guides or dancer positions. */
+export function snapFormationPosition(
+  position: { x: number; y: number },
+  targets: { x: number; y: number }[],
+  tolerance: { x: number; y: number },
+) {
+  const nearest = (value: number, candidates: number[], threshold: number) => {
+    let result = value;
+    let distance = threshold;
+    for (const candidate of candidates) {
+      const delta = Math.abs(candidate - value);
+      if (delta <= distance) {
+        distance = delta;
+        result = candidate;
+      }
+    }
+    return result;
+  };
+  const guides = [0.25, 0.5, 0.75];
+  return {
+    x: nearest(
+      position.x,
+      [...guides, ...targets.map((p) => p.x)],
+      tolerance.x,
+    ),
+    y: nearest(
+      position.y,
+      [...guides, ...targets.map((p) => p.y)],
+      tolerance.y,
+    ),
+  };
+}
+
+/** Create or update the current position using the preceding position keyframe. */
+export function usePreviousDancerPosition(
+  c: Choreography,
+  id: string,
+  time: number,
+) {
+  const previous = getDancerFrames(c, id, "position")
+    .filter((frame) => frame.time < time - 0.0005)
+    .at(-1);
+  if (!previous) throw new Error("没有更早的位置关键帧。");
+  const pose = sampleDancer(c, id, previous.time);
+  if (!pose) throw new Error("舞者不存在。");
+  changePose(c, id, time, { x: pose.x, y: pose.y });
+}
+
 export function changePose(
   c: Choreography,
   id: string,

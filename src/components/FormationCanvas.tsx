@@ -19,6 +19,8 @@ import {
   sampleFormation,
   resizeCanvas,
   setVisibility,
+  snapFormationPosition,
+  usePreviousDancerPosition,
   type Choreography,
   type Pose,
   type StickColor,
@@ -111,6 +113,7 @@ export function FormationCanvas({
   const [name, setName] = useState("");
   const [hand, setHand] = useState<"left" | "right">("left");
   const [showNames, setShowNames] = useState(readShowNames);
+  const [snap, setSnap] = useState(true);
   const [bothHands, setBothHands] = useState(false);
   const [videoSources, setVideoSources] = useState<Record<string, string>>(
     externalVideoSources ?? {},
@@ -374,6 +377,24 @@ export function FormationCanvas({
           >
             插入视频
           </button>
+          <button
+            disabled={!selectedDancer || readOnly}
+            title="将当前时刻的位置设为该成员上一个位置关键帧的位置"
+            onClick={() => {
+              const t = freeze();
+              run((c) => usePreviousDancerPosition(c, selected!, t));
+            }}
+          >
+            沿用上一位置
+          </button>
+          <label className="check" title="拖动时吸附舞台参考线和其他可见成员">
+            <input
+              type="checkbox"
+              checked={snap}
+              onChange={(e) => setSnap(e.target.checked)}
+            />
+            吸附对齐
+          </label>
           <label className="check">
             <input
               type="checkbox"
@@ -512,8 +533,7 @@ export function FormationCanvas({
                           return;
                         drag.current.moved = true;
                         const next = point(event.clientX, event.clientY);
-                        drag.current.pose = {
-                          ...drag.current.pose,
+                        let position = {
                           x: Math.max(
                             0.03,
                             Math.min(0.97, next.x + drag.current.dx),
@@ -522,6 +542,23 @@ export function FormationCanvas({
                             0.04,
                             Math.min(0.96, next.y + drag.current.dy),
                           ),
+                        };
+                        if (snap && svg.current) {
+                          const bounds = svg.current.getBoundingClientRect();
+                          if (bounds.width && bounds.height) {
+                            position = snapFormationPosition(
+                              position,
+                              sampleFormation(c, t).filter(
+                                (pose) =>
+                                  pose.visible && pose.dancerId !== d.id,
+                              ),
+                              { x: 8 / bounds.width, y: 8 / bounds.height },
+                            );
+                          }
+                        }
+                        drag.current.pose = {
+                          ...drag.current.pose,
+                          ...position,
                         };
                       },
                       (cancelled) => {

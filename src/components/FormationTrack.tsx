@@ -11,7 +11,7 @@ import {
   saveDancerFrame,
   type TrackKind,
 } from "../core/choreography";
-import { formatTime } from "../core/timing";
+import { formatTime, snapTime } from "../core/timing";
 import { Modal } from "./Fields";
 
 type Props = {
@@ -26,6 +26,7 @@ type Props = {
   onError: (m: string) => void;
   onNotice: (m: string) => void;
   selectedDancerId?: string | null;
+  snapTimeline: boolean;
 };
 
 export function FormationTrack({
@@ -40,6 +41,7 @@ export function FormationTrack({
   onError,
   onNotice,
   selectedDancerId,
+  snapTimeline,
 }: Props) {
   const beginDrag = usePointerDrag(
     `${p.id}:${p.audio?.id}`,
@@ -167,6 +169,25 @@ export function FormationTrack({
           &gt;
         </button>
         <button
+          aria-label={`删除${label}关键帧`}
+          title={`删除选中或当前时刻的${label}关键帧`}
+          disabled={
+            readOnly ||
+            !(
+              frames.find((frame) => frame.id === selectedFrames[kind]) ??
+              atCurrent
+            )
+          }
+          onClick={() => {
+            const frame =
+              frames.find((item) => item.id === selectedFrames[kind]) ??
+              atCurrent;
+            if (frame) deleteFrame(kind, frame.id);
+          }}
+        >
+          删除
+        </button>
+        <button
           aria-label={`${label}关键帧时间`}
           disabled={!atCurrent}
           onClick={() => {
@@ -249,6 +270,27 @@ export function FormationTrack({
                             ((pointer.clientX - origin) / lane.width) * scale,
                         ),
                       );
+                      if (snapTimeline && lane.width > 0) {
+                        const targets = p.blocks
+                          .flatMap((block) => [block.start, block.end])
+                          .filter(
+                            (t): t is number =>
+                              t !== null &&
+                              t >= 0 &&
+                              t <= duration &&
+                              !frames.some(
+                                (other) =>
+                                  other.id !== frame.id &&
+                                  Math.round(other.time * 1000) ===
+                                    Math.round(t * 1000),
+                              ),
+                          );
+                        time = snapTime(
+                          time,
+                          targets,
+                          (8 / lane.width) * scale,
+                        );
+                      }
                       element.style.left = `${(time / scale) * 100}%`;
                     },
                     (cancelled) => {

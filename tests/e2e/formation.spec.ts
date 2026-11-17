@@ -148,6 +148,32 @@ test("舞者双手颜色、拖动建帧、插值、登退场、撤销和刷新",
   expect(errors).toEqual([]);
 });
 
+test("手动删除关键帧并沿用上一位置", async ({ page }) => {
+  await boot(page);
+  await add(page, "小一");
+  await song(page);
+  await at(page, 4);
+  const dancer = page.getByRole("button", { name: "舞者 小一", exact: true });
+  const box = (await dancer.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "沿用上一位置" }).click();
+  await expect.poll(() => getX(page, "小一")).toBeCloseTo(400, 0);
+  await at(page, 2);
+  await expect.poll(() => getX(page, "小一")).toBeCloseTo(400, 0);
+  const keys = page.getByLabel("位置关键帧").locator(".formation-key");
+  await expect(keys).toHaveCount(2);
+  await keys.last().click();
+  await page.getByRole("button", { name: "删除位置关键帧" }).click();
+  await expect(keys).toHaveCount(1);
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect(keys).toHaveCount(2);
+});
+
 test("插入视频、时间轴入出点、逐帧入点和最小化", async ({ page }) => {
   await boot(page);
   await song(page);
@@ -283,6 +309,17 @@ test("插入视频、时间轴入出点、逐帧入点和最小化", async ({ pa
   await page.reload();
   await page.getByLabel("选择舞者").selectOption({ label: "视频舞者" });
   await expect(page.locator(".video-marker-lane")).toBeVisible();
+});
+
+test("无法播放的视频显示错误且不插入片段", async ({ page }) => {
+  await boot(page);
+  await page.getByLabel("插入视频文件").setInputFiles({
+    name: "invalid.webm",
+    mimeType: "video/webm",
+    buffer: Buffer.from("not a video"),
+  });
+  await expect(page.getByRole("alert")).toContainText("浏览器无法读取该视频");
+  await expect(page.locator(".formation-video")).toHaveCount(0);
 });
 
 test("视频工具栏删除片段并可撤销、重做和刷新", async ({ page }) => {
@@ -646,7 +683,7 @@ test("关键帧获得焦点后支持 Backspace 和 Delete 删除", async ({ page
   await expect(color).toHaveCount(2);
 });
 
-async function formationFixture(page: Page) {
+async function formationFixture(page: Page, withBlock = false) {
   await boot(page);
   const dancers = [
     { id: "alice", name: "甲" },
@@ -674,7 +711,20 @@ async function formationFixture(page: Page) {
         id: "fixture",
         songName: "队形测试",
         bpm: "120",
-        blocks: [],
+        blocks: withBlock
+          ? [
+              {
+                id: "block1",
+                type: "副歌",
+                beats: "8",
+                lyrics: [{ id: "lyric1", jp: "", cn: "", time: null }],
+                arrangement: "",
+                remarks: "",
+                start: 6,
+                end: 8,
+              },
+            ]
+          : [],
         audio: null,
         position: 0,
         updatedAt: 1,
@@ -686,6 +736,43 @@ async function formationFixture(page: Page) {
   await page.getByLabel("选择舞者").selectOption("alice");
   await song(page);
 }
+test("关键帧与段落双向吸附可关闭", async ({ page }) => {
+  await formationFixture(page, true);
+  const lane = page.getByLabel("位置关键帧").locator(".formation-key-lane");
+  const key = lane.locator(".formation-key").nth(1);
+  const laneBox = (await lane.boundingBox())!;
+  const dragKey = async (seconds: number) => {
+    const box = (await key.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + (laneBox.width * seconds) / 12,
+      box.y + box.height / 2,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+  };
+  await dragKey(1.96);
+  await expect(key).toHaveAttribute("title", "00:06.00");
+  await page.getByLabel("关键帧与段落吸附").uncheck();
+  await dragKey(1.96);
+  await expect(key).not.toHaveAttribute("title", "00:08.00");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.getByLabel("关键帧与段落吸附").check();
+  const block = page.locator(".timeline-block");
+  const blockBox = (await block.boundingBox())!;
+  const timelineBox = (await page.locator(".timeline").boundingBox())!;
+  await page.mouse.move(blockBox.x + 2, blockBox.y + blockBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    blockBox.x + 2 - (timelineBox.width * 1.96) / 12,
+    blockBox.y + blockBox.height / 2,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect(block).toHaveAttribute("title", /00:04.00/);
+});
+
 test("多人同步播放、变速与AB回跳，拖动关键帧和边界限制", async ({ page }) => {
   await formationFixture(page);
   await at(page, 2);

@@ -13,6 +13,8 @@ import {
   sampleFormation,
   sampleVideos,
   setVisibility,
+  snapFormationPosition,
+  usePreviousDancerPosition,
   saveFrame,
   moveFrame,
   deleteDancer,
@@ -35,6 +37,29 @@ import {
   History,
 } from "../src/core/model";
 describe("全员队形", () => {
+  it("吸附最近参考线并在阈值外保留原位置", () => {
+    expect(
+      snapFormationPosition({ x: 0.503, y: 0.401 }, [{ x: 0.7, y: 0.4 }], {
+        x: 0.01,
+        y: 0.01,
+      }),
+    ).toEqual({ x: 0.5, y: 0.4 });
+    expect(
+      snapFormationPosition({ x: 0.53, y: 0.43 }, [], { x: 0.01, y: 0.01 }),
+    ).toEqual({ x: 0.53, y: 0.43 });
+  });
+  it("沿用上一关键帧位置并保持中间静止", () => {
+    const c = emptyChoreography(),
+      id = addDancer(c, "A", 0);
+    changePose(c, id, 1, { x: 0.3, y: 0.4 });
+    changePose(c, id, 4, { x: 0.8, y: 0.9 });
+    usePreviousDancerPosition(c, id, 4);
+    expect(sampleFormation(c, 2)[0]).toMatchObject({ x: 0.3, y: 0.4 });
+    expect(() => usePreviousDancerPosition(c, id, 0)).toThrow(
+      "没有更早的位置关键帧",
+    );
+  });
+
   it("插值走位与瞬时换色，不提前入场或滑向退场点", () => {
     const c = emptyChoreography(),
       id = addDancer(c, "一", 2);

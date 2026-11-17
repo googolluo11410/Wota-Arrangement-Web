@@ -18,6 +18,7 @@ import {
   formatTime,
   insertionStart,
   playable,
+  snapTime,
   suggestedDuration,
 } from "../core/timing";
 export type PlayerHandle = {
@@ -166,6 +167,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
   callbacks.current = { onTime, onPersist, onError };
   const restoredPosition = useRef(p.position);
   const readyRef = useRef(false);
+  const [snapTimeline, setSnapTimeline] = useState(true);
   const [pointA, setPointA] = useState<number | null>(null);
   const [pointB, setPointB] = useState<number | null>(null);
   const [abEnabled, setAbEnabled] = useState(false);
@@ -727,6 +729,17 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
               多选
             </button>
           )}
+          {showFormationTrack && !readOnly && (
+            <label title="拖动关键帧或段落时吸附到另一轨道的时间点">
+              <input
+                type="checkbox"
+                aria-label="关键帧与段落吸附"
+                checked={snapTimeline}
+                onChange={(e) => setSnapTimeline(e.target.checked)}
+              />
+              关键帧与段落吸附
+            </label>
+          )}
           <label>
             缩放{" "}
             <input
@@ -879,8 +892,37 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
                         if (Math.abs(ev.clientX - startX) < 3 && !moved) return;
                         moved = true;
                         suppressTimelineClick.current = true;
-                        const delta =
-                          ((ev.clientX - startX) / width) * duration;
+                        let delta = ((ev.clientX - startX) / width) * duration;
+                        if (snapTimeline && width > 0) {
+                          const targets = (p.choreography?.frames ?? [])
+                            .map((frame) => frame.time)
+                            .filter((t) => t >= 0 && t <= duration);
+                          const anchors =
+                            mode === "move"
+                              ? p.blocks
+                                  .filter((block) =>
+                                    movingIds.includes(block.id),
+                                  )
+                                  .flatMap((block) => [block.start, block.end])
+                                  .filter((t): t is number => t !== null)
+                              : [mode === "start" ? range.start : range.end];
+                          let correction = (8 * duration) / width;
+                          let best = 0;
+                          for (const anchor of anchors) {
+                            const value = anchor + delta;
+                            const snapped = snapTime(
+                              value,
+                              targets,
+                              correction,
+                            );
+                            const diff = snapped - value;
+                            if (diff !== 0 && Math.abs(diff) <= correction) {
+                              correction = Math.abs(diff);
+                              best = diff;
+                            }
+                          }
+                          delta += best;
+                        }
                         if (mode === "move" && movingIds.length > 1) {
                           nextRanges = draggedGroupRanges(
                             p.blocks,
@@ -989,6 +1031,7 @@ export const Player = forwardRef<PlayerHandle, Props>(function Player(
                 project={p}
                 edit={edit}
                 selectedDancerId={formationDancerId}
+                snapTimeline={snapTimeline}
                 readOnly={readOnly}
                 duration={duration}
                 loaded={loaded}

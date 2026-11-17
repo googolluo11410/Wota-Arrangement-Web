@@ -16,8 +16,9 @@ export type { VideoMetadata } from "./videoPolicy";
 
 export async function inspectVideoFile(file: File): Promise<VideoMetadata> {
   const { parseBlob } = await import("music-metadata");
-  const parsed = await parseBlob(file, { duration: true });
-  const track = parsed.format.trackInfo?.find(
+  // Some playable WebM files have metadata that the container parser rejects.
+  const parsed = await parseBlob(file, { duration: true }).catch(() => null);
+  const track = parsed?.format.trackInfo?.find(
     (item) => item.type === videoTrackType,
   );
   const video = track?.video as
@@ -26,7 +27,7 @@ export async function inspectVideoFile(file: File): Promise<VideoMetadata> {
   let height = video?.pixelHeight ?? video?.displayHeight ?? 0;
   let duration =
     (track as { duration?: number } | undefined)?.duration ??
-    parsed.format.duration ??
+    parsed?.format.duration ??
     0;
   let frameRate = video?.frameRate ?? 0;
 
@@ -34,7 +35,7 @@ export async function inspectVideoFile(file: File): Promise<VideoMetadata> {
     const probed = await probeVideoElement(file);
     width ||= probed.width;
     height ||= probed.height;
-    duration ||= probed.duration;
+    if (!duration || !Number.isFinite(duration)) duration = probed.duration;
     frameRate ||= probed.frameRate;
   }
   if (!frameRate || !Number.isFinite(frameRate))
@@ -84,6 +85,22 @@ async function probeVideoElement(file: File, detectFrameRateMs = 0) {
         reject(new Error("浏览器无法读取该视频。"));
       };
     });
+    // MediaRecorder WebM can report an infinite duration until seeking to its end.
+    if (!Number.isFinite(metadata.duration)) {
+      metadata.duration = await new Promise<number>((resolve) => {
+        const timer = window.setTimeout(() => resolve(0), 3000);
+        video.onseeked = () => {
+          window.clearTimeout(timer);
+          resolve(
+            Number.isFinite(video.duration)
+              ? video.duration
+              : video.currentTime,
+          );
+        };
+        video.currentTime = 1e10;
+      });
+      video.currentTime = 0;
+    }
     const frameRate = detectFrameRateMs
       ? await detectVideoFrameRate(video, detectFrameRateMs)
       : 0;

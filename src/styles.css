@@ -2322,8 +2322,13 @@ fieldset {
 .video-inpoint-group .field {
   margin-bottom: 0;
 }
+.video-inpoint-group input,
+.video-inpoint-group > button,
+.video-inpoint-rate input {
+  height: 36px;
+}
 .video-inpoint-group > button {
-  min-height: 34px;
+  min-height: 36px;
   margin-bottom: 0;
   white-space: nowrap;
 }
